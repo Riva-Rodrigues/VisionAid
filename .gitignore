@@ -1,1 +1,11 @@
-/venv
+# Virtual Environment
+venv/
+**/venv/
+
+# Models
+models/
+**/models/
+
+# Environment Variables
+.env
+**/.env
