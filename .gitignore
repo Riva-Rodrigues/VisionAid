@@ -9,3 +9,9 @@ models/
 # Environment Variables
 .env
 **/.env
+
+_# Python Cache
+__pycache__/
+
+yolov8n.pt
+/research
