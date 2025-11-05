@@ -9,6 +9,7 @@ from llm import LLMSystem
 from voice import VoiceSystem
 from memory import MemorySystem
 from currency_detector import CurrencyDetector
+from ocr_detector import OCRDetector
 
 NAVIGATION_KEYWORDS = [
     "navigate", "street", "road", "cross", "traffic", "walk", "direction", "intersection", "signal", "vehicle"
@@ -40,6 +41,13 @@ class VisualAssistant:
         except Exception as e:
             print(f"Currency detector init error: {e}")
             self.currency_detector = None
+            
+        # OCR detector (optional - requires MISTRAL_API_KEY)
+        try:
+            self.ocr_detector = OCRDetector()
+        except Exception as e:
+            print(f"OCR detector init error: {e}")
+            self.ocr_detector = None
         self.WARNING_DISTANCE = 1.0
         self.FRAME_SKIP = 4
         self.frame_count = 0
@@ -286,6 +294,45 @@ class VisualAssistant:
                     response = "Furniture detected: " + ", ".join(desc)
                 self.voice.speak(response)
                 print(response)
+                return
+
+            # OCR text detection command handler
+            elif any(kw in command for kw in ("read text", "detect text", "ocr", "what does it say", "read this")):
+                self.voice.speak("Looking for text in the image, one moment please...")
+                
+                # Get current frame
+                frame = None
+                with self.processed_lock:
+                    frame = self.latest_processed.copy() if self.latest_processed is not None else None
+                if frame is None:
+                    ret, frame = self.cap.read()
+                    if not ret or frame is None:
+                        self.voice.speak("I couldn't access the camera right now.")
+                        return
+
+                # Check OCR availability
+                if not self.ocr_detector:
+                    self.voice.speak("OCR is not configured. Please set the Mistral API key in the environment.")
+                    return
+
+                try:
+                    # Process frame through OCR
+                    text = self.ocr_detector.process_frame(frame)
+                    if not text or text.startswith("Failed to process"):
+                        self.voice.speak("I couldn't detect any text in the image. Please try again with clearer text or better lighting.")
+                        return
+
+                    # Add to memory context
+                    self.memory.context_memory['last_ocr_text'] = text
+                    self.memory.context_memory['environmental_context'] += f" Text detected: {text}"
+
+                    # Speak the result
+                    self.voice.speak(f"I found this text: {text}")
+                    print(f"OCR Text: {text}")
+
+                except Exception as e:
+                    print(f"OCR error: {e}")
+                    self.voice.speak("Sorry, I encountered an error while trying to read the text.")
                 return
 
         # --- Fallback to LLM ---
