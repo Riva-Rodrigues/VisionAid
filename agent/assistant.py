@@ -8,6 +8,7 @@ from navigation_vision import NavigationVisionSystem
 from llm import LLMSystem
 from voice import VoiceSystem
 from memory import MemorySystem
+from currency_detector import CurrencyDetector
 
 NAVIGATION_KEYWORDS = [
     "navigate", "street", "road", "cross", "traffic", "walk", "direction", "intersection", "signal", "vehicle"
@@ -33,6 +34,12 @@ class VisualAssistant:
         self.llm = LLMSystem()
         self.voice = VoiceSystem()
         self.memory = MemorySystem()
+        # Currency detector (optional - requires ROBOFLOW_API_KEY or pass key via env)
+        try:
+            self.currency_detector = CurrencyDetector()
+        except Exception as e:
+            print(f"Currency detector init error: {e}")
+            self.currency_detector = None
         self.WARNING_DISTANCE = 1.0
         self.FRAME_SKIP = 4
         self.frame_count = 0
@@ -220,6 +227,41 @@ class VisualAssistant:
 
         # --- Context-Aware General Handling ---
         if self.mode == "general":
+        
+            if any(kw in command for kw in ("currency", "note", "rupee", "what note", "which note", "identify note", "identify currency")):
+                # give user feedback
+                self.voice.speak("Identifying the banknote. Please hold the note steady in front of the camera.")
+                # prefer latest processed frame, else grab one frame
+                frame = None
+                with self.processed_lock:
+                    frame = self.latest_processed.copy() if self.latest_processed is not None else None
+                if frame is None:
+                    ret, frame = self.cap.read()
+                    if not ret or frame is None:
+                        self.voice.speak("I couldn't access the camera right now.")
+                        return
+                # run detector (may raise if not configured)
+                if not self.currency_detector:
+                    self.voice.speak("Currency detection is not configured. Please set the Roboflow API key in the environment.")
+                    return
+                try:
+                    res = self.currency_detector.infer_frame(frame)
+                except Exception as e:
+                    print(f"Currency inference error: {e}")
+                    self.voice.speak("An error occurred while identifying the note.")
+                    return
+
+                top = res.get('top_label')
+                conf = res.get('top_confidence')
+                if top:
+                    response = f"I think this is a {top} rupee note with {conf*100:.0f} percent confidence." if conf is not None else f"I think this is a {top} rupee note."
+                    # add to memory as a detection
+                    self.memory.update_memory([{'class': f"{top}_note", 'distance': 0.0, 'position': 'hand', 'confidence': conf or 1.0}])
+                else:
+                    response = "I couldn't detect a currency note. Please try again holding it closer and steady."
+                print(response)
+                self.voice.speak(response)
+                return
             if "what objects" in command or "what is around" in command or "describe" in command or "see" in command:
                 latest = self.memory.get_recent_detections()
                 if not latest:
@@ -246,12 +288,22 @@ class VisualAssistant:
                 return
 
         # --- Fallback to LLM ---
+        recent_detections = self.memory.get_recent_detections()
         context_info = {
             'environment': self.memory.context_memory['environmental_context'],
             'recent_objects': self.memory.context_memory['recent_objects'],
+            'recent_detections': [
+                {
+                    'class': obj['class'],
+                    'distance': obj['distance'],
+                    'position': obj['position'],
+                    'movement': obj.get('movement', 'stationary')
+                }
+                for obj in recent_detections
+            ],
             'close_objects': [
                 f"{obj['class']} ({obj['position']})"
-                for obj in self.memory.get_recent_detections()
+                for obj in recent_detections
                 if obj['distance'] < 2.0
             ],
             'warnings': self.memory.context_memory['warnings_given'][-3:]

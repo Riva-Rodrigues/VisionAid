@@ -21,7 +21,7 @@ class LLMSystem:
             print(f"Loaded API Key: {os.getenv('GENAI_API_KEY')}")
 
             # Initialize the Gemini model
-            self.llm_model = genai.GenerativeModel("gemini-1.5-flash")
+            self.llm_model = genai.GenerativeModel("gemini-2.5-flash")
             print("✓ Gemini model loaded successfully")
         except Exception as e:
             print(f"Error loading Gemini model: {e}")
@@ -32,13 +32,33 @@ class LLMSystem:
             print("Gemini model is not loaded.")
             return None
         try:
-            # Construct the system context
+            # Process detailed object information
+            detailed_objects = []
+            for obj in context_info.get('recent_detections', []):
+                details = []
+                # Add position information
+                if obj.get('position'):
+                    details.append(f"located {obj['position']}")
+                # Add distance information
+                if obj.get('distance'):
+                    details.append(f"about {obj['distance']:.1f} meters away")
+                # Add movement information
+                if obj.get('movement'):
+                    details.append(f"is {obj['movement']}")
+                
+                obj_desc = f"a {obj['class']} ({', '.join(details)})"
+                detailed_objects.append(obj_desc)
+
+            # Construct the enhanced system context
             prompt = (
-                "You are a helpful visual assistant for visually impaired users. "
+                "You are a helpful visual assistant for visually impaired users. Use the following detailed information about "
+                "the environment to provide specific, location-aware responses. When asked about distances or locations, "
+                "include the exact positioning and measurements provided.\n\n"
                 f"Current environment: {context_info.get('environment', 'Unknown')}\n"
-                f"Recent objects detected: {', '.join(context_info.get('recent_objects', []))}\n"
-                f"User's question: {user_input}\n"
-                "Provide a helpful, concise response about the visual environment."
+                "Detailed scene description:\n"
+                f"{'; '.join(detailed_objects)}\n"
+                f"User's question: {user_input}\n\n"
+                "Provide a helpful, natural response that incorporates the specific position, distance, and movement information when relevant."
             )
 
             # Generate the response using the Gemini model
