@@ -88,7 +88,8 @@ class VisualAssistant:
                 distance = self.vision.calculate_object_distance(depth_map, detection['bbox'])
                 detection['distance'] = distance
                 detections_with_depth.append(detection)
-            warnings = self.general_warnings(detections_with_depth)
+            # In general mode we do not produce audible navigation warnings
+            warnings = []
         self.memory.update_memory(detections_with_depth)
         annotated_frame = self.draw_detections(frame.copy(), detections_with_depth)
         return annotated_frame, warnings
