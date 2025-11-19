@@ -74,28 +74,40 @@ class VisualAssistant:
             self.voice.speak("General mode activated.")
             print("Switched to General Mode")
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, compute_depth=True):
         if self.mode == "navigation":
             detections = self.navigation_vision.detect_objects(frame)
             if not detections:
                 return frame, []
-            depth_map = self.navigation_vision.estimate_depth(frame)
             detections_with_depth = []
-            for detection in detections:
-                distance = self.navigation_vision.calculate_object_distance(depth_map, detection['bbox'])
-                detection['distance'] = distance
-                detections_with_depth.append(detection)
+            if compute_depth:
+                depth_map = self.navigation_vision.estimate_depth(frame)
+                for detection in detections:
+                    distance = self.navigation_vision.calculate_object_distance(depth_map, detection['bbox'])
+                    detection['distance'] = distance
+                    detections_with_depth.append(detection)
+            else:
+                # use previous distance if available
+                for detection in detections:
+                    detection['distance'] = detection.get('distance', 1.0)
+                    detections_with_depth.append(detection)
             warnings = self.navigation_warnings(detections_with_depth)
         else:
             detections = self.vision.detect_objects(frame)
             if not detections:
                 return frame, []
-            depth_map = self.vision.estimate_depth(frame)
             detections_with_depth = []
-            for detection in detections:
-                distance = self.vision.calculate_object_distance(depth_map, detection['bbox'])
-                detection['distance'] = distance
-                detections_with_depth.append(detection)
+            if compute_depth:
+                depth_map = self.vision.estimate_depth(frame)
+                for detection in detections:
+                    distance = self.vision.calculate_object_distance(depth_map, detection['bbox'])
+                    detection['distance'] = distance
+                    detections_with_depth.append(detection)
+            else:
+                # use previous distance if available
+                for detection in detections:
+                    detection['distance'] = detection.get('distance', 1.0)
+                    detections_with_depth.append(detection)
             # In general mode we do not produce audible navigation warnings
             warnings = []
         self.memory.update_memory(detections_with_depth)
@@ -394,15 +406,13 @@ class VisualAssistant:
                 ret, frame = self.cap.read()
                 if not ret:
                     continue
-                if self.frame_count % self.FRAME_SKIP == 0:
-                    processed, warnings = self.process_frame(frame)
-                    with self.processed_lock:
-                        self.latest_processed = processed
-                    if warnings:
-                        self.handle_warnings(warnings)
-                else:
-                    with self.processed_lock:
-                        self.latest_processed = frame.copy()
+                # Process YOLO detections every frame, but skip depth estimation on skipped frames
+                compute_depth = (self.frame_count % self.FRAME_SKIP == 0)
+                processed, warnings = self.process_frame(frame, compute_depth=compute_depth)
+                with self.processed_lock:
+                    self.latest_processed = processed
+                if warnings:
+                    self.handle_warnings(warnings)
                 self.frame_count += 1
                 time.sleep(0.01)
 

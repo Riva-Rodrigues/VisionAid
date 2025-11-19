@@ -22,6 +22,10 @@ class NavigationVisionSystem:
         self.object_history = {}  # { (class, pos_bucket): {center, timestamp} }
         self.movement_threshold = 20  # pixels; tune as needed
         self.time_threshold = 1.0     # seconds
+        # Depth normalization state: running statistics
+        self.depth_min_buffer = []
+        self.depth_max_buffer = []
+        self.buffer_size = 30  # rolling window of last N frames
 
     def _get_pos_bucket(self, center):
         # Bucketing helps to match objects even with slight detection jitter
@@ -87,7 +91,31 @@ class NavigationVisionSystem:
                 align_corners=False,
             ).squeeze()
         depth_map = prediction.cpu().numpy()
-        depth_map = (depth_map - depth_map.min()) / (depth_map.max() - depth_map.min())
+        
+        # Normalize per-frame first
+        frame_min = float(depth_map.min())
+        frame_max = float(depth_map.max())
+        
+        # Update running statistics
+        self.depth_min_buffer.append(frame_min)
+        self.depth_max_buffer.append(frame_max)
+        if len(self.depth_min_buffer) > self.buffer_size:
+            self.depth_min_buffer.pop(0)
+        if len(self.depth_max_buffer) > self.buffer_size:
+            self.depth_max_buffer.pop(0)
+        
+        # Use median of recent min/max for stable normalization
+        stable_min = float(np.median(self.depth_min_buffer))
+        stable_max = float(np.median(self.depth_max_buffer))
+        
+        # Normalize using stable statistics
+        if stable_max > stable_min:
+            depth_map = (depth_map - stable_min) / (stable_max - stable_min)
+        else:
+            depth_map = (depth_map - frame_min) / (frame_max - frame_min)
+        
+        # Clamp to [0, 1]
+        depth_map = np.clip(depth_map, 0.0, 1.0)
         return depth_map
 
     def calculate_object_distance(self, depth_map, bbox):
