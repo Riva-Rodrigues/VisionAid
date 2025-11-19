@@ -3,6 +3,45 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+def non_max_suppression(detections, iou_threshold=0.5):
+    """Remove duplicate detections based on bounding box overlap (IOU)"""
+    if not detections:
+        return []
+    
+    # Sort by confidence in descending order
+    sorted_dets = sorted(detections, key=lambda x: x['confidence'], reverse=True)
+    filtered = []
+    
+    for detection in sorted_dets:
+        is_duplicate = False
+        x1, y1, x2, y2 = detection['bbox']
+        area1 = (x2 - x1) * (y2 - y1)
+        
+        for kept in filtered:
+            kx1, ky1, kx2, ky2 = kept['bbox']
+            area2 = (kx2 - kx1) * (ky2 - ky1)
+            
+            # Calculate intersection
+            xi1 = max(x1, kx1)
+            yi1 = max(y1, ky1)
+            xi2 = min(x2, kx2)
+            yi2 = min(y2, ky2)
+            
+            if xi2 > xi1 and yi2 > yi1:
+                intersection = (xi2 - xi1) * (yi2 - yi1)
+                union = area1 + area2 - intersection
+                iou = intersection / union if union > 0 else 0
+                
+                # If same class and high IOU, it's a duplicate
+                if detection['class'] == kept['class'] and iou > iou_threshold:
+                    is_duplicate = True
+                    break
+        
+        if not is_duplicate:
+            filtered.append(detection)
+    
+    return filtered
+
 class VisionSystem:
     def __init__(self):
         self.setup_models()
@@ -61,6 +100,9 @@ class VisionSystem:
                             'center': (center_x, center_y),
                             'position': "-".join(position)  # e.g., "top-left"
                         })
+        
+        # Apply NMS to remove duplicate detections
+        detections = non_max_suppression(detections, iou_threshold=0.5)
         return detections
 
     def estimate_depth(self, frame):

@@ -63,13 +63,13 @@ class LLMSystem:
 
             # Generate the response using the Gemini model
             result = self.llm_model.generate_content(prompt)
-            print(f"Raw Response: {result}")  # Debugging: Check the raw response
+            # print(f"Raw Response: {result}")  # Debugging: Check the raw response
 
             # Extract the content from the result object
             if result and result.candidates:
                 response = result.candidates[0].content.parts[0].text  # Access attributes directly
                 response = response.strip()  # Ensure no leading/trailing whitespace
-                print(f"Generated Response: {response}")  # Debugging: Check the generated response
+                # print(f"Generated Response: {response}")  # Debugging: Check the generated response
                 return response if len(response) >= 10 else "Sorry, I couldn't generate a meaningful response."
             else:
                 print("No candidates found in the response.")

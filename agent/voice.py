@@ -31,7 +31,7 @@ class VoiceSystem:
             except Exception as e:
                 print(f"TTS error: {e}")
 
-    def listen(self, timeout=1, phrase_time_limit=5):
+    def listen(self, timeout=1, phrase_time_limit=10):
         try:
             with self.microphone as source:
                 print("Listening for commands...")

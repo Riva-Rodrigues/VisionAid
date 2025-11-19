@@ -66,4 +66,11 @@ class MemorySystem:
                 recent_detections.extend(entry['detections'])
             else:
                 break
-        return recent_detections
+        # Deduplicate by class and position - keep the most recent with highest confidence
+        deduplicated = {}
+        for detection in recent_detections:
+            key = (detection['class'], detection['position'])
+            if key not in deduplicated or detection['confidence'] > deduplicated[key]['confidence']:
+                deduplicated[key] = detection
+        
+        return list(deduplicated.values())
